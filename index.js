@@ -25,42 +25,90 @@ const client = new MongoClient(uri, {
 async function run() {
     try {
         // Connect the client to the server	(optional starting in v4.7)
-        await client.connect();
+        // await client.connect();
         // Send a ping to confirm a successful connection
-        await client.db("admin").command({ ping: 1 });
-        console.log("Pinged your deployment. You successfully connected to MongoDB!");
+        // await client.db("admin").command({ ping: 1 });
+        // console.log("Pinged your deployment. You successfully connected to MongoDB!");
 
         const database = client.db("taskManagementDB");
         const usersCollection = database.collection("users");
 
+
+        app.get('/users/:email', async (req, res) => {
+            try {
+                const email = req.params.email;
+
+                const user = await usersCollection.findOne({ email });
+
+                res.status(200).json(user);
+            } catch (error) {
+                console.error(error);
+                res.status(500).json({ message: 'Internal server error' });
+            }
+        })
+
         app.post('/users', async (req, res) => {
             const user = req.body
-            const result = await usersCollection.insertOne(user)
-            res.send(result)
-        })
-
-
-
-        app.put('/bids/:id', async (req, res) => {
-            const id = req.params.id
-            const updatedBid = req.body
-            const filter = { _id: new ObjectId(`${id}`) }
-            const options = { upsert: true }
-            const updateBid = {
-                $set: {
-                    ...updatedBid
-                }
+            const email = user.email
+            const existingUser = await usersCollection.findOne({ email })
+            if (existingUser) {
+                res.send("email already exists")
+            } else {
+                const result = await usersCollection.insertOne(user)
+                res.send(result)
             }
-            const result = await bidsCollection.updateOne(filter, updateBid, options)
-            res.send(result)
+
         })
 
-        app.delete('/deletejob/:id', async (req, res) => {
-            const id = req.params.id
-            const query = { _id: new ObjectId(`${id}`) }
-            const result = await jobsCollection.deleteOne(query)
-            res.send(result)
-        })
+        app.put('/addTask/:email', async (req, res) => {
+            try {
+                const email = req.params.email;
+                const newTodo = req.body;
+                const filter = { email: email };
+
+                const existingUser = await usersCollection.findOne(filter);
+
+                const existingTodoArray = existingUser.tasks?.todo || [];
+
+                const updateUser = {
+                    $set: {
+                        "tasks.todo": [...existingTodoArray, newTodo]
+                    }
+                };
+
+                const result = await usersCollection.updateOne(filter, updateUser);
+
+                res.status(200).json({ message: 'Task added to todo', result });
+            } catch (error) {
+                console.error(error);
+                res.status(500).json({ message: 'Internal server error' });
+            }
+        });
+
+        app.put('/users/tasks/:email', async (req, res) => {
+
+            try {
+                const userEmail = req.params.email;
+                const updatedTasks = req.body;
+                const filter = { email: userEmail };
+                const updateUser = {
+                    $set: {
+                        tasks: updatedTasks
+                    }
+                };
+                console.log(updatedTasks);
+                // Update the tasks for the user with the specified email
+                const result = await usersCollection.updateOne(
+                    filter,
+                    updateUser
+                );
+                console.log(result);
+                res.send(result)
+            } catch (error) {
+                console.error('Error updating tasks:', error);
+                res.status(500).json({ error: 'Internal server error' });
+            }
+        });
 
     } finally {
         // Ensures that the client will close when you finish/error
